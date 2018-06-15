@@ -18,6 +18,7 @@ configure_credentials $payload
 
 uri=$(jq -r '.source.uri // ""' < $payload)
 exclude_branches=$(jq -r '.source.exclude // ""' < $payload)
+exclude_author=$(jq -r '.source.exclude_author // ""' < $payload)
 branch_filter=$(jq -r '.source.branches // [] | join(" ")' < $payload)
 git_config_payload=$(jq -r '.source.git_config // []' < $payload)
 
@@ -28,6 +29,20 @@ configure_git_global "${git_config_payload}"
 e_point=!
 current_heads=$(git ls-remote -h "$uri" $branch_filter | sed 's/refs\/heads\///' | awk '{print $2, $1}' | awk "\$1 $e_point~ \"^($exclude_branches)$\"" | sort -V)
 
+
+destination=$TMPDIR/git-resource-repo-cache
+
+if [ -d $destination ]; then
+  cd $destination
+  git fetch
+else
+  mkdir $destination
+  cd $destination
+  git init
+  git remote add origin $uri -f
+fi
+
+
 current_heads_map=$(
   jq -n '
     $heads | rtrimstr("\n") | split("\n") |
@@ -36,17 +51,24 @@ current_heads_map=$(
   ' --arg heads "$current_heads"
 )
 
-echo "$current_heads" |
-  while read branch ref; do
-    if [ -z "$branch" ]; then
-      continue
-    fi
+while read branch ref; do
+if [ -z "$branch" ]; then
+  continue
+fi
 
-    prev_ref=$(jq -r '.version | .[$branch]' --arg branch "$branch" < $payload)
-    if [ "$ref" != "$prev_ref" ]; then
-      echo "$branch"
-    fi
-  done |
-  jq -R . |
-  jq -s 'map({changed: .} + $branches)' \
-    --argjson branches "$current_heads_map" >&3
+author=$(git show --format="%an" origin/$branch $ref | head -n 1)
+prev_ref=$(jq -r '.version | .[$branch]' --arg branch "$branch" < $payload)
+
+if [ "$author" == "$exclude_author" ]; then
+  current_heads_map=$(echo "$current_heads_map" | jq --arg prev_ref "$prev_ref" --arg branch "$branch" '.[$branch] = $prev_ref')
+fi
+if [[ "$ref" != "$prev_ref" && "$author" != "$exclude_author" ]]; then
+  changed_branch="$changed_branch $branch"
+fi
+done <<< "$current_heads"
+
+if [ -n "$changed_branch" ]; then
+  echo $changed_branch | tr " " "\n" | jq -R . |
+    jq -s 'map({changed: .} + $branches)' \
+      --argjson branches "$current_heads_map" >&3
+fi

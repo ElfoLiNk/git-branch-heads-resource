@@ -47,7 +47,8 @@ make_commit_to_file_on_branch() {
   local repo=$1
   local file=$2
   local branch=$3
-  local msg=${4-}
+  local author=$4
+  local msg=${5-}
 
   # ensure branch exists
   if ! git -C $repo rev-parse --verify $branch >/dev/null 2>&1; then
@@ -61,7 +62,7 @@ make_commit_to_file_on_branch() {
   echo x >> $repo/$file
   git -C $repo add $file
   git -C $repo \
-    -c user.name='test' \
+    -c user.name="$author" \
     -c user.email='test@example.com' \
     commit -q -m "commit $(wc -l $repo/$file) $msg"
 
@@ -70,7 +71,7 @@ make_commit_to_file_on_branch() {
 }
 
 make_commit_to_branch() {
-  make_commit_to_file_on_branch $1 some-file $2
+  make_commit_to_file_on_branch $1 some-file $2 "test"
 }
 
 check_uri() {
@@ -103,6 +104,23 @@ check_uri_from() {
     },
     version: ({changed: "doesnt-matter"} + $branches)
   }' --arg uri "$uri" --argjson branches "$branches" | ${resource_dir}/check | tee /dev/stderr
+}
+
+check_uri_from_with_exclude_author() {
+  uri=$1
+  author=$2
+
+  shift
+
+  branches=$(echo "$@" | jq -R 'split(" ") | map(split("=") | {key: .[0], value: .[1]}) | from_entries')
+
+  jq -n '{
+    source: {
+      uri: $uri,
+      exclude_author: $author
+    },
+    version: ({changed: "doesnt-matter"} + $branches)
+  }' --arg uri "$uri" --arg author "$author" --argjson branches "$branches" | ${resource_dir}/check | tee /dev/stderr
 }
 
 get_changed_branch() {
