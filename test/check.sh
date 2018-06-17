@@ -184,16 +184,14 @@ it_can_check_with_removed_branch() {
 }
 
 
-it_can_ignore_branch_with_last_author_excluded() {
+it_can_keep_last_valid_ref_branch_when_last_author_excluded() {
   local repo=$(init_repo)
 
   local refmaster1=$(git -C $repo rev-parse master)
 
   local refa1=$(make_commit_to_branch $repo branch-a)
   local refb0=$(make_commit_to_branch $repo branch-b)
-    echo $refb0
   local refb1=$(make_commit_to_file_on_branch $repo some-file2 branch-b "Concourse")
-  echo $refb1
   local refc1=$(make_commit_to_branch $repo branch-c)
 
   check_uri_from_with_exclude_author $repo "Concourse" "branch-a=$refa1" "branch-b=$refb0" "master=$refmaster1" | jq -e '
@@ -207,6 +205,50 @@ it_can_ignore_branch_with_last_author_excluded() {
   ' --arg refa1 "$refa1" --arg refb0 "$refb0" --arg refc1 "$refc1" --arg refmaster1 "$refmaster1"
 }
 
+it_can_exclude_branch_when_author_excluded() {
+  local repo=$(init_repo)
+
+  local refmaster1=$(git -C $repo rev-parse master)
+
+  local refa1=$(make_commit_to_branch $repo branch-a)
+  local refb0=$(make_commit_to_file_on_branch $repo some-file2 branch-b "Concourse")
+  local refc1=$(make_commit_to_branch $repo branch-c)
+
+  check_uri_from_with_exclude_author $repo "Concourse" "branch-a=$refa1" "master=$refmaster1" | jq -e '
+    . == [{
+    changed: "branch-c",
+    "branch-a": $refa1,
+    "branch-c": $refc1,
+    "master": $refmaster1
+  }]
+  ' --arg refa1 "$refa1" --arg refc1 "$refc1" --arg refmaster1 "$refmaster1"
+}
+
+it_can_check_from_no_version_with_filter_exclude_author() {
+  set -e
+
+  local repo=$(init_repo)
+
+  local refmaster1=$(git -C $repo rev-parse master)
+
+  # NB: these actually end up being the same ref most of the time, since commit
+  # shas are computed based on the patch message, and if it's the same code
+  # change, message, parent sha, and timestamp, the sha will be the same
+  local refa1=$(make_commit_to_branch $repo matched-a)
+  local refb1=$(make_commit_to_file_on_branch $repo some-file2 matched-b "Concourse")
+
+  make_commit_to_branch $repo not-matched-a
+
+  make_commit_to_branch $repo ignored-a
+  make_commit_to_branch $repo ignored-b
+
+  check_uri_branches_with_exclude_author $repo "Concourse" 'matched-*' | jq -e '
+    . == [{
+      changed: "matched-a",
+      "matched-a": $refa1
+    }]
+  ' --arg refa1 "$refa1"
+}
 
 run it_can_check_from_no_version
 run it_can_check_from_no_version_with_filter
@@ -215,4 +257,6 @@ run it_can_check_with_updated_branch
 run it_can_check_with_updated_branches
 run it_can_check_with_added_branch
 run it_can_check_with_removed_branch
-run it_can_ignore_branch_with_last_author_excluded
+run it_can_keep_last_valid_ref_branch_when_last_author_excluded
+run it_can_exclude_branch_when_author_excluded
+run it_can_check_from_no_version_with_filter_exclude_author

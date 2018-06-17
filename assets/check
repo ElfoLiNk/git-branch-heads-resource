@@ -57,10 +57,14 @@ if [ -z "$branch" ]; then
 fi
 
 author=$(git show --format="%an" origin/$branch $ref | head -n 1)
-prev_ref=$(jq -r '.version | .[$branch]' --arg branch "$branch" < $payload)
+prev_ref=$(jq -r '.version | .[$branch] // ""' --arg branch "$branch" < $payload)
 
 if [ "$author" == "$exclude_author" ]; then
-  current_heads_map=$(echo "$current_heads_map" | jq --arg prev_ref "$prev_ref" --arg branch "$branch" '.[$branch] = $prev_ref')
+  if [[ -z "$prev_ref" ]]; then
+    current_heads_map=$(echo "$current_heads_map" | jq --arg branch "$branch" 'del(.[$branch])')
+  else
+    current_heads_map=$(echo "$current_heads_map" | jq --arg prev_ref "$prev_ref" --arg branch "$branch" '.[$branch] = $prev_ref')
+  fi
 fi
 if [[ "$ref" != "$prev_ref" && "$author" != "$exclude_author" ]]; then
   changed_branch="$changed_branch $branch"
@@ -71,4 +75,6 @@ if [ -n "$changed_branch" ]; then
   echo $changed_branch | tr " " "\n" | jq -R . |
     jq -s 'map({changed: .} + $branches)' \
       --argjson branches "$current_heads_map" >&3
+else
+  echo "[]" >&3
 fi

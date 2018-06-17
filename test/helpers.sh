@@ -82,6 +82,15 @@ check_uri() {
   }' --arg uri "$1" | ${resource_dir}/check | tee /dev/stderr
 }
 
+check_uri_with_exclude_author() {
+  jq -n '{
+    source: {
+      uri: $uri,
+      exclude_author: $author
+    }
+  }' --arg uri "$1" --arg author "$2" | ${resource_dir}/check | tee /dev/stderr
+}
+
 check_uri_branches() {
   jq -n '{
     source: {
@@ -89,6 +98,16 @@ check_uri_branches() {
       branches: ($branches | split(" "))
     }
   }' --arg uri "$1" --arg branches "$*" | ${resource_dir}/check | tee /dev/stderr
+}
+
+check_uri_branches_with_exclude_author() {
+  jq -n '{
+    source: {
+      uri: $uri,
+      exclude_author: $author,
+      branches: ($branches | split(" "))
+    }
+  }' --arg uri "$1" --arg author "$2" --arg branches "$*" | ${resource_dir}/check | tee /dev/stderr
 }
 
 check_uri_from() {
